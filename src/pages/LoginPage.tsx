@@ -1,26 +1,45 @@
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, isLoggedIn, loginError } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogin = () => {
-    // TODO: Replace with real Google OAuth (e.g., Firebase Auth or Google Identity Services)
-    // For now, we mock a successful login.
-    login('user@gmail.com');
-    navigate('/pin');
+  // If already logged in, go straight to PIN
+  useEffect(() => {
+    if (isLoggedIn) {
+      navigate('/pin');
+    }
+  }, [isLoggedIn, navigate]);
+
+  const handleLogin = async () => {
+    await login();
+    // Navigation handled by onAuthStateChanged in useAuth + useEffect above
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="max-w-md w-full bg-white p-8 border border-gray-200 rounded-lg text-center shadow-sm">
-        <h1 className="text-2xl font-semibold text-gray-900 mb-2">Welcome Back</h1>
-        <p className="text-sm text-gray-500 mb-8">Sign in to access the Team Review Dashboard</p>
-        
+        <div className="mb-6">
+          <div className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center mx-auto mb-4">
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-semibold text-gray-900 mb-2">Team Review Dashboard</h1>
+          <p className="text-sm text-gray-500">Sign in with your evaluator Google account to access the PPT review portal.</p>
+        </div>
+
+        {loginError && (
+          <div className="mb-4 px-4 py-2.5 bg-red-50 border border-red-200 rounded-md text-sm text-red-700 font-medium">
+            {loginError}
+          </div>
+        )}
+
         <button
           onClick={handleLogin}
-          className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 rounded-md py-2.5 px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 rounded-md py-2.5 px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 cursor-pointer"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
@@ -30,6 +49,10 @@ export default function LoginPage() {
           </svg>
           Sign in with Google
         </button>
+
+        <p className="mt-4 text-xs text-gray-400">
+          Only authorized evaluators can access this portal.
+        </p>
       </div>
     </div>
   );

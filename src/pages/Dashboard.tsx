@@ -9,7 +9,7 @@ type FilterType = 'all' | 'pending' | 'selected' | 'rejected' | 'reviewed';
 
 export default function Dashboard() {
   const { email, logout } = useAuth();
-  const { teams, updateTeamReview } = useTeamsData();
+  const { teams, updateTeamReview, loading, error } = useTeamsData();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterType>('all');
   const [categoryFilter, setCategoryFilter] = useState<Category | 'all'>('all');
@@ -243,8 +243,21 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Loading / Error states */}
+        {loading && (
+          <div className="flex items-center justify-center gap-3 py-16 text-gray-500 text-sm">
+            <div className="w-5 h-5 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
+            Loading submissions from Firestore…
+          </div>
+        )}
+        {error && !loading && (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 font-medium">
+            {error}
+          </div>
+        )}
+
         {/* Table */}
-        <TeamTable teams={filteredTeams} onUpdateTeam={handleUpdateTeam} />
+        {!loading && !error && <TeamTable teams={filteredTeams} onUpdateTeam={handleUpdateTeam} />}
       </main>
     </div>
   );

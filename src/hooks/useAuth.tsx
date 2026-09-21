@@ -1,47 +1,89 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import {
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut as firebaseSignOut,
+  type User,
+} from 'firebase/auth';
+import { auth, googleProvider } from '../lib/firebase';
 
 interface AuthState {
   isLoggedIn: boolean;
   email: string | null;
+  displayName: string | null;
   hasEnteredPin: boolean;
+  firebaseUser: User | null;
 }
 
 interface AuthContextType extends AuthState {
-  login: (email: string) => void;
+  login: () => Promise<void>;
   enterPin: () => void;
-  logout: () => void;
+  logout: () => Promise<void>;
+  loginError: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [authState, setAuthState] = useState<AuthState>(() => {
-    const stored = localStorage.getItem('authState');
-    if (stored) {
-      return JSON.parse(stored);
-    }
-    return { isLoggedIn: false, email: null, hasEnteredPin: false };
+  const [authState, setAuthState] = useState<AuthState>({
+    isLoggedIn: false,
+    email: null,
+    displayName: null,
+    hasEnteredPin: false,
+    firebaseUser: null,
   });
+  const [loginError, setLoginError] = useState('');
 
+  // PIN state is not automatically persisted across sessions (requires PIN on every fresh login)
   useEffect(() => {
-    localStorage.setItem('authState', JSON.stringify(authState));
-  }, [authState]);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setAuthState({
+          isLoggedIn: true,
+          email: user.email,
+          displayName: user.displayName,
+          hasEnteredPin: false,
+          firebaseUser: user,
+        });
+      } else {
+        setAuthState({
+          isLoggedIn: false,
+          email: null,
+          displayName: null,
+          hasEnteredPin: false,
+          firebaseUser: null,
+        });
+        sessionStorage.removeItem('teacher_pin_entered');
+      }
+    });
 
-  const login = (email: string) => {
-    setAuthState({ isLoggedIn: true, email, hasEnteredPin: false });
+    return () => unsubscribe();
+  }, []);
+
+  const login = async () => {
+    setLoginError('');
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('popup-closed-by-user') && !msg.includes('cancelled-popup-request')) {
+        setLoginError('Sign-in failed. Please try again.');
+      }
+    }
   };
 
   const enterPin = () => {
-    setAuthState(prev => ({ ...prev, hasEnteredPin: true }));
+    sessionStorage.setItem('teacher_pin_entered', 'true');
+    setAuthState((prev) => ({ ...prev, hasEnteredPin: true }));
   };
 
-  const logout = () => {
-    setAuthState({ isLoggedIn: false, email: null, hasEnteredPin: false });
-    localStorage.removeItem('authState');
+  const logout = async () => {
+    await firebaseSignOut(auth);
+    sessionStorage.removeItem('teacher_pin_entered');
   };
 
   return (
-    <AuthContext.Provider value={{ ...authState, login, enterPin, logout }}>
+    <AuthContext.Provider value={{ ...authState, login, enterPin, logout, loginError }}>
       {children}
     </AuthContext.Provider>
   );
