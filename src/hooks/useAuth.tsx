@@ -13,6 +13,7 @@ interface AuthState {
   displayName: string | null;
   hasEnteredPin: boolean;
   firebaseUser: User | null;
+  loading: boolean;
 }
 
 interface AuthContextType extends AuthState {
@@ -31,10 +32,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     displayName: null,
     hasEnteredPin: false,
     firebaseUser: null,
+    loading: true,
   });
   const [loginError, setLoginError] = useState('');
 
-  // PIN state is not automatically persisted across sessions (requires PIN on every fresh login)
+  // PIN state is not automatically persisted across sessions (requires PIN on every fresh page refresh)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -44,6 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           displayName: user.displayName,
           hasEnteredPin: false,
           firebaseUser: user,
+          loading: false,
         });
       } else {
         setAuthState({
@@ -52,6 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           displayName: null,
           hasEnteredPin: false,
           firebaseUser: null,
+          loading: false,
         });
         sessionStorage.removeItem('teacher_pin_entered');
       }

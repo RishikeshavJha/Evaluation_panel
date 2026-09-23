@@ -10,8 +10,8 @@ import {
 import { db } from '../lib/firebase';
 import type { Team, Status } from '../types';
 
-// TODO: Replace with n8n webhook URL when provided
-// const EVALUATION_WEBHOOK = "REPLACE_ME";
+const SELECTION_WEBHOOK_URL = "https://colloquium.app.n8n.cloud/webhook/e749f049-559a-4a6e-a5f8-2842e389dc97";
+const REJECTION_WEBHOOK_URL = "https://colloquium.app.n8n.cloud/webhook/220f51ec-7939-48e6-81ee-617d66dcb2fe";
 
 export function useTeamsData() {
   const [teams, setTeams] = useState<Team[]>([]);
@@ -37,7 +37,7 @@ export function useTeamsData() {
           )
         );
 
-        const userCache: Record<string, { name?: string; college?: string; teamName?: string }> = {};
+        const userCache: Record<string, { name?: string; email?: string; college?: string; institution?: string; teamName?: string }> = {};
         await Promise.all(
           uniqueUserIds.map(async (uid) => {
             try {
@@ -83,19 +83,40 @@ export function useTeamsData() {
               }
             }
 
-            // Map fields accurately using projectSubmission data + user profile metadata
-            const finalTeamName = data.teamName || userMeta.teamName || 'Unknown Team';
-            const finalLeaderName =
-              data.leaderName || data.fullName || data.name || userMeta.name || data.email || '—';
+            const category = (data.category as Team['category']) || 'UG';
+            const isSolo = category === 'PG' || category === 'PPG';
+            const finalLeaderEmail = data.email || userMeta.email || '';
+
+            // Resolve leader name accurately (avoid fallback to email when full name exists)
+            const rawNameCandidate =
+              data.leaderName ||
+              data.fullName ||
+              data.name ||
+              userMeta.name ||
+              (isSolo && data.teamName && !data.teamName.includes('@') ? data.teamName : '');
+
+            const finalLeaderName = rawNameCandidate || (finalLeaderEmail ? finalLeaderEmail.split('@')[0] : 'Participant');
+
+            // Resolve team name accurately
+            let finalTeamName = data.teamName || userMeta.teamName || '';
+            if (isSolo) {
+              finalTeamName = finalTeamName && finalTeamName !== finalLeaderName && !finalTeamName.includes('@')
+                ? finalTeamName
+                : finalLeaderName;
+            } else if (!finalTeamName) {
+              finalTeamName = `Team ${finalLeaderName}`;
+            }
+
             const finalCollegeName =
-              data.collegeName || data.college || userMeta.college || '—';
+              data.collegeName || data.college || userMeta.college || userMeta.institution || '—';
 
             return {
               id: d.id,
               teamName: finalTeamName,
               leaderName: finalLeaderName,
+              leaderEmail: finalLeaderEmail,
               collegeName: finalCollegeName,
-              category: (data.category as Team['category']) || 'UG',
+              category,
               pptLink: link,
               submittedAt: submittedAtISO,
               status: (evalStatus.toLowerCase() as Status) || 'pending',
@@ -109,6 +130,7 @@ export function useTeamsData() {
               // Extra fields for display
               _userId: userId,
               _submissionId: d.id,
+              _email: finalLeaderEmail,
               _track: data.track || '',
               _solutionSummary: data.solutionSummary || '',
               _problemStatement: data.problemStatement || '',
@@ -180,6 +202,52 @@ export function useTeamsData() {
         evaluatedAt: now,
         evaluatorRemarks: comment,
       });
+
+      // Trigger n8n Evaluation Webhook (Selected or Rejected)
+      const targetWebhookUrl =
+        evaluationStatus === 'SELECTED'
+          ? SELECTION_WEBHOOK_URL
+          : evaluationStatus === 'REJECTED'
+          ? REJECTION_WEBHOOK_URL
+          : null;
+
+      if (targetWebhookUrl) {
+        const payload = {
+          userId,
+          submissionId: teamId,
+          teamName: team.teamName,
+          leaderName: team.leaderName,
+          leaderEmail: team.leaderEmail || (team as any)._email || '',
+          email: team.leaderEmail || (team as any)._email || '',
+          collegeName: team.collegeName,
+          category: team.category,
+          track: (team as any)._track || '',
+          problemStatement: (team as any)._problemStatement || '',
+          solutionSummary: (team as any)._solutionSummary || '',
+          evaluationStatus,
+          evaluatedBy: reviewerEmail,
+          evaluatedAt: now,
+          evaluatorRemarks: comment,
+        };
+
+        fetch(targetWebhookUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        }).catch((err) => {
+          console.warn(`Standard fetch failed for evaluation webhook (${evaluationStatus}), trying fallback:`, err);
+          fetch(targetWebhookUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+          }).catch((e) => console.error('Evaluation webhook fallback error:', e));
+        });
+      }
     } catch (err) {
       console.error('Failed to update evaluation in Firestore:', err);
       // Revert optimistic update on failure

@@ -11,6 +11,7 @@ export interface Team {
   id: string;
   teamName: string;
   leaderName: string;
+  leaderEmail?: string;
   collegeName: string;
   category: Category;
   pptLink: string;
